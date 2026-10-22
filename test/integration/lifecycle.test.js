@@ -50,6 +50,7 @@ test('Postgres-backed OAuth, durable event and approval lifecycle',{skip:!proces
   await t.test('PKCE, exact resource, confidential connection and browser proof are required',async()=>{
     const r=await fetch(base+'/oauth/authorize?'+new URLSearchParams(params));cookie=r.headers.getSetCookie()[0].split(';')[0];
     assert.equal(r.headers.get('referrer-policy'),'same-origin','Browser form POSTs must preserve the same-origin Origin header');
+    assert.ok(r.headers.get('content-security-policy').includes("form-action 'self' https://chatgpt.com;"),'Consent must allow its registered OAuth redirect through form-action');
     const csrf=(await r.text()).match(/name="csrf" value="([^"]+)"/)[1];
     const opaqueOrigin=await fetch(base+'/oauth/authorize',{method:'POST',redirect:'manual',headers:{'content-type':'application/x-www-form-urlencoded',cookie,origin:'null'},body:new URLSearchParams({...params,csrf})});
     assert.equal(opaqueOrigin.status,403,'Opaque origins remain unauthorized');

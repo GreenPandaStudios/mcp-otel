@@ -60,6 +60,9 @@ export function authRoutes(app, store, config) {
   app.get('/oauth/authorize', async (req,res) => {
     noCache(res);
     const { q } = await clientRequest(req);
+    // Browsers also enforce form-action on the POST's redirect. Allow only
+    // the callback origin from the already validated client registration.
+    res.set('Content-Security-Policy',res.get('Content-Security-Policy').replace("form-action 'self';",`form-action 'self' ${new URL(q.redirect_uri).origin};`));
     const sid = random(), csrf = random();
     await store.query(`INSERT INTO browser_sessions(id_hash,csrf_hash,expires_at) VALUES($1,$2,now()+interval '10 minutes')`, [hash(sid),hash(csrf)]);
     res.cookie(cookieName,sid,{httpOnly:true,secure:true,sameSite:'lax',path:'/',maxAge:30*86400000});
