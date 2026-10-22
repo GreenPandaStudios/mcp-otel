@@ -60,12 +60,15 @@ export function authRoutes(app, store, config) {
   app.get('/oauth/authorize', async (req,res) => {
     noCache(res);
     const { q } = await clientRequest(req);
+    // Browsers also enforce form-action on the POST's redirect. Allow only
+    // the callback origin from the already validated client registration.
+    res.set('Content-Security-Policy',res.get('Content-Security-Policy').replace("form-action 'self';",`form-action 'self' ${new URL(q.redirect_uri).origin};`));
     const sid = random(), csrf = random();
     await store.query(`INSERT INTO browser_sessions(id_hash,csrf_hash,expires_at) VALUES($1,$2,now()+interval '10 minutes')`, [hash(sid),hash(csrf)]);
     res.cookie(cookieName,sid,{httpOnly:true,secure:true,sameSite:'lax',path:'/',maxAge:30*86400000});
     const fields = Object.entries({...q, csrf}).filter(([k]) => ['client_id','redirect_uri','response_type','resource','code_challenge','code_challenge_method','scope','state','csrf'].includes(k))
       .map(([k,v])=>`<input type="hidden" name="${escapeHtml(k)}" value="${escapeHtml(v)}">`).join('');
-    res.type('html').send(page('Connect MCP-OTel', `<p>Authorize your private ChatGPT connection to read cluster telemetry, subscribe to events, and prepare repairs.</p><p>Rollouts require separate approval of the exact tested change.</p><form method="post">${fields}<button>Connect this installation</button></form>`));
+    res.type('html').send(page('Connect MCP-OTel', `<p>Connect your MCP client to this private installation.</p><p>Requested access: <code>${escapeHtml(q.scope)}</code>.</p><p>Rollouts require separate approval of the exact tested change.</p><form method="post">${fields}<button>Connect this installation</button></form>`));
   });
   app.post('/oauth/authorize', async (req,res) => {
     noCache(res);
