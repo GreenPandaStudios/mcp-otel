@@ -7,6 +7,7 @@ The reusable core queries Loki, Prometheus, Tempo, and the Kubernetes API. Grafa
 ## What it provides
 
 - MCP `2026-07-28` discovery and bounded tools for services, logs, metric templates, traces, health, incident context, and repairs.
+- Local Codex compatibility through authenticated `initialize` and stateless HTTP notifications for MCP `2025-11-25` and `2025-06-18`. Durable webhook events use the MCP `2026-07-28` contract.
 - Direct `events/list`, `events/subscribe`, and `events/unsubscribe` on the authenticated MCP endpoint. Incident payloads include up to 20 redacted stdout/stderr excerpts, timestamps, and source metadata.
 - PostgreSQL subscription storage and transactional event/delivery outbox. Signed, verified HTTPS callbacks, secret rotation, deduplication, retries, expiry, and revocation checks survive restarts.
 - A private OAuth authorization-code + S256 PKCE connection, with audience, scope and namespace enforcement. Installing a plugin or signing into an arbitrary ChatGPT account grants no cluster access.
@@ -33,6 +34,8 @@ BOOTSTRAP_FILE=/secure/owner-client.json node --env-file=.env scripts/bootstrap.
 ```
 
 The resulting confidential OAuth client belongs to one private connection. Supply its ID and secret in ChatGPT's custom MCP setup. Keep the secret out of the public plugin package. This uses MCP-OTel's own OAuth server, not Sign in with ChatGPT.
+
+For local Codex, provision a separate confidential client with its exact loopback callback URL registered. Configure the same fixed callback port in Codex and authenticate with `codex mcp login`. Codex stores the private client settings and OAuth credentials locally; see the [official Codex MCP configuration guide](https://learn.chatgpt.com/docs/extend/mcp?surface=app). Connecting a local client does not start the optional repair worker.
 
 See [deployment](docs/deployment.md), [ChatGPT setup](plugin/README.md), [security](SECURITY.md), [events](docs/events.md), and [repair hooks](docs/repairs.md).
 

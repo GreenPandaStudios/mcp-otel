@@ -66,6 +66,27 @@ test('Postgres-backed OAuth, durable event and approval lifecycle',{skip:!proces
     const profile=await rpc('tools/call',{name:'get_profile',arguments:{}});assert.equal(profile.body.result.structuredContent.id,'owner');
     grantId=(await store.query('SELECT id FROM grants WHERE principal_id=$1',['owner'])).rows[0].id;
   });
+  await t.test('local Codex legacy handshake, notifications and tool calls preserve authentication',async()=>{
+    const legacy=async(method,params={},token=access,notification=false,version='2025-11-25')=>{
+      const r=await fetch(base+'/mcp',{method:'POST',headers:{'content-type':'application/json','mcp-protocol-version':version,...(token?{authorization:`Bearer ${token}`}:{})},body:JSON.stringify({jsonrpc:'2.0',...(notification?{}:{id:2}),method,params})});
+      return {status:r.status,body:r.status===202?await r.text():await r.json()};
+    };
+    assert.equal((await legacy('initialize',{},null)).status,401);
+    for(const version of ['2025-11-25','2025-06-18']){
+      const init=await legacy('initialize',{protocolVersion:version},access,false,version);
+      assert.equal(init.body.result.protocolVersion,version);
+      assert.equal(init.body.result.capabilities.events,undefined,'Legacy clients are not promised MCP 2 events');
+    }
+    const initialized=await legacy('notifications/initialized',{},access,true);
+    assert.equal(initialized.status,202);assert.equal(initialized.body,'');
+    const catalog=(await legacy('tools/list')).body.result;
+    assert.ok(catalog.tools.some(t=>t.name==='search_logs'));assert.equal(catalog.resultType,undefined);
+    const profile=(await legacy('tools/call',{name:'get_profile',arguments:{}})).body.result;
+    assert.equal(profile.structuredContent.id,'owner');assert.equal(profile.resultType,undefined);
+    assert.equal((await legacy('tools/list',{},null)).status,401);
+    assert.equal((await legacy('tools/list',{},access,false,'unsupported')).status,400);
+    assert.equal((await rpc('tools/list')).body.result.resultType,'complete','MCP 2 contract is preserved');
+  });
   const subscription={name:'incident.changed',arguments:{namespace:'synthetic',service:'demo'},delivery:{mode:'webhook',url:'https://callback.example/mcp-events/test',secret}};
   await t.test('event filters are authorized, subscriptions idempotent, and secrets encrypted',async()=>{
     assert.equal((await rpc('events/subscribe',{...subscription,arguments:{namespace:'other'}})).body.error.code,-32001);
