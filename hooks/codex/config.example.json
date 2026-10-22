@@ -1,0 +1,23 @@
+{
+  "listen": "127.0.0.1",
+  "port": 18081,
+  "stateDir": "/var/lib/mcp-otel-repairs",
+  "codexAuthDir": "/var/lib/mcp-otel-codex-auth",
+  "codexImage": "mcp-otel-codex:0.163.0",
+  "kubectl": "/usr/local/bin/kubectl",
+  "kubeconfig": "/var/lib/mcp-otel-repair-kubeconfig",
+  "targets": [{
+    "namespace": "mcp-otel-synthetic",
+    "service": "repair-demo",
+    "repository": "example/mcp-otel",
+    "base": "main",
+    "deployment": "repair-demo",
+    "container": "demo",
+    "imageRepository": "127.0.0.1:5500/mcp-otel-demo",
+    "dockerfile": "examples/repair-demo/Dockerfile",
+    "buildContext": "examples/repair-demo",
+    "testArgs": ["node", "--test", "examples/repair-demo/demo.test.js"],
+    "healthURL": "http://CLUSTER_SERVICE_IP:8080/health",
+    "requiredChecks": []
+  }]
+}
