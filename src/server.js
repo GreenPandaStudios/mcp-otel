@@ -96,7 +96,10 @@ export function createApp({store,config,telemetry,events,repairs,incidents}){
       return respond(complete({content:[{type:'text',text:JSON.stringify(data)}],structuredContent:data}));
     }catch(e){
       if(e.code===-32015)return error(e.code,e.message,e.data);
-      if(e.code===-32001)return error(e.code,'Not authorized');
+      if(e.code===-32001){
+        if(e.authScope&&rpc.method==='tools/call')return respond(complete({isError:true,content:[{type:'text',text:'Reconnect with the required scope'}],_meta:{'mcp/www_authenticate':[`Bearer resource_metadata="${config.origin}/.well-known/oauth-protected-resource", error="insufficient_scope", error_description="This action requires ${e.authScope}", scope="${e.authScope}"`]}}));
+        return error(e.code,'Not authorized');
+      }
       if(rpc.method==='tools/call')return respond(complete({isError:true,content:[{type:'text',text:redact(e.message)}]}));
       return error(-32602,redact(e.message));
     }

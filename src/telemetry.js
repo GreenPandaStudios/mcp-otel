@@ -68,7 +68,7 @@ export class Telemetry {
     const u=new URL('/loki/api/v1/query_range',this.config.lokiURL);
     u.search=new URLSearchParams({query,start:String(BigInt(start)*1000000n),end:String(BigInt(end)*1000000n),limit:String(limit),direction:'backward'});
     const data=await boundedJSON(u);
-    return {untrusted:true,range:{start:new Date(start).toISOString(),end:new Date(end).toISOString()},logs:(data.data?.result??[]).flatMap(s=>s.values.map(v=>({timestamp:new Date(Number(BigInt(v[0])/1000000n)).toISOString(),...s.stream,line:redact(v[1])}))).sort((a,b)=>b.timestamp.localeCompare(a.timestamp)).slice(0,limit),limit};
+    return {untrusted:true,range:{start:new Date(start).toISOString(),end:new Date(end).toISOString()},logs:(data.data?.result??[]).flatMap(s=>s.values.map(v=>({timestamp:new Date(Number(BigInt(v[0])/1000000n)).toISOString(),...s.stream,stream:s.stream.log_iostream??s.stream.stream,line:redact(v[1])}))).sort((a,b)=>b.timestamp.localeCompare(a.timestamp)).slice(0,limit),limit};
   }
   async metrics(principal,input){
     requireNamespace(principal,input.namespace);const {start,end}=bounds(input);
@@ -92,7 +92,7 @@ export class Telemetry {
     }
     const q=`{ resource.k8s.namespace.name = ${JSON.stringify(input.namespace)}${input.service?` && resource.service.name = ${JSON.stringify(input.service)}`:''} }`;
     const u=new URL('/api/search',this.config.tempoURL);u.search=new URLSearchParams({q,start:String(Math.floor(start/1000)),end:String(Math.floor(end/1000)),limit:String(Math.min(limit,50))});
-    const result=await boundedJSON(u);return {traces:redact(result.traces??[]),metrics:result.metrics};
+    const result=await boundedJSON(u);return {traces:redact((result.traces??[]).map(t=>({...t,traceID:String(t.traceID).padStart(32,'0')}))),metrics:result.metrics};
   }
   async backends(){
     const urls={grafana:[this.config.grafanaURL,'/api/health'],loki:[this.config.lokiURL,'/ready'],prometheus:[this.config.prometheusURL,'/-/ready'],tempo:[this.config.tempoURL,'/ready']};

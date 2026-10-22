@@ -121,7 +121,7 @@ scrape_configs:
         replacement: kubernetes.default.svc:443
       - source_labels: [__meta_kubernetes_node_name]
         target_label: __metrics_path__
-        replacement: /api/v1/nodes/${1}/proxy/metrics/cadvisor
+        replacement: /api/v1/nodes/$1/proxy/metrics/cadvisor
   - job_name: application-opt-in
     kubernetes_sd_configs:
       - role: pod
@@ -135,7 +135,7 @@ scrape_configs:
       - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
         target_label: __address__
         regex: '([^:]+)(?::[0-9]+)?;([0-9]+)'
-        replacement: '${1}:${2}'
+        replacement: '$1:$2'
       - source_labels: [__meta_kubernetes_namespace]
         target_label: namespace
       - source_labels: [__meta_kubernetes_pod_name]
@@ -266,7 +266,7 @@ processors:
         statements:
           - set(resource.attributes["namespace"], resource.attributes["k8s.namespace.name"])
           - set(resource.attributes["pod"], resource.attributes["k8s.pod.name"])
-          - set(resource.attributes["stream"], attributes["log.iostream"])
+          - set(attributes["stream"], attributes["log.iostream"])
           - set(resource.attributes["service.name"], resource.attributes["app.name"]) where resource.attributes["service.name"] == nil
           - set(resource.attributes["service.name"], resource.attributes["k8s.container.name"]) where resource.attributes["service.name"] == nil
           - set(body, "[private application content withheld]") where (${privateCondition}) and not IsMatch(body, "^(info|warn|fail|crit|dbug): (Microsoft[.]|System[.])")
@@ -274,18 +274,26 @@ processors:
           - replace_pattern(body, "(?i)(password|secret|token|api_key)[^:=]{0,4}[=:] *[^ ,;]+", "[REDACTED]")
           - replace_pattern(body, "sk-[A-Za-z0-9_-]{16,}|gh[pousr]_[A-Za-z0-9_]+", "[REDACTED]")
           - replace_pattern(body, "(?i)(prompt|completion|transcript|message_body|messages)[^:]*:.*", "[private message body withheld]")
-          - keep_keys(attributes, ["log.iostream"])
-          - keep_keys(resource.attributes, ["namespace", "pod", "stream", "service.name", "k8s.namespace.name", "k8s.pod.name", "k8s.container.name", "k8s.node.name"])
+          - keep_keys(attributes, ["log.iostream", "stream"])
+          - keep_keys(resource.attributes, ["namespace", "pod", "service.name", "k8s.namespace.name", "k8s.pod.name", "k8s.container.name", "k8s.node.name"])
+  filter/span-events:
+    error_mode: propagate
+    trace_conditions:
+      - context: spanevent
+        conditions: ['true']
   transform/traces:
     error_mode: propagate
     trace_statements:
       - context: resource
         statements:
           - keep_keys(attributes, ["service.name", "service.version", "k8s.namespace.name", "k8s.pod.name", "k8s.node.name"])
+      - context: scope
+        statements:
+          - keep_keys(attributes, [])
       - context: span
         statements:
           - keep_keys(attributes, ["http.request.method", "http.response.status_code", "http.route", "rpc.system", "rpc.method", "error.type"])
-          - set(events, [])
+          - set(status.message, "")
           - replace_pattern(name, "(?i)(password|secret|token|prompt|messages)[=:].*", "[REDACTED]")
   batch:
     timeout: 2s
@@ -310,11 +318,14 @@ service:
       exporters: [otlphttp/loki]
     traces:
       receivers: [otlp]
-      processors: [memory_limiter, k8sattributes, transform/traces, batch]
+      processors: [memory_limiter, k8sattributes, filter/span-events, transform/traces, batch]
       exporters: [otlphttp/tempo]
 `});
 workload('collector','otel/opentelemetry-collector-contrib:0.163.2',[['health',13133],['otlp-grpc',4317],['otlp-http',4318]],{...cm('collector','/etc/otel'),args:['--config=/etc/otel/config.yaml'],kind:'DaemonSet',sa:'collector',uid:0,memory:'256Mi',mounts:[...cm('collector','/etc/otel').mounts,{name:'podlogs',mountPath:'/var/log/pods',readOnly:true},{name:'checkpoints',mountPath:'/data'}],volumes:[...cm('collector','/etc/otel').volumes,{name:'podlogs',hostPath:{path:'/var/log/pods'}},{name:'checkpoints',hostPath:{path:'/var/lib/mcp-otel/collector',type:'DirectoryOrCreate'}}],readiness:'/'});
-workload('mcp-otel',c.image,[['http',8080]],{sa:'mcp-otel',memory:'256Mi',env:[{name:'PUBLIC_ORIGIN',value:c.origin},{name:'LOKI_URL',value:'http://loki:3100'},{name:'PROMETHEUS_URL',value:'http://prometheus:9090'},{name:'TEMPO_URL',value:'http://tempo:3200'},{name:'GRAFANA_URL',value:'http://grafana:3000'},...['DATABASE_URL','ENCRYPTION_KEY','ALERT_INGEST_KEY'].map(key=>({name:key,valueFrom:{secretKeyRef:{name:'mcp-otel',key}}}))],readiness:'/readyz'});
+const repairEnv=c.repairHookURL?[{name:'REPAIR_HOOK_URL',value:c.repairHookURL},{name:'REPAIR_HOOK_KEY',valueFrom:{secretKeyRef:{name:'mcp-otel',key:'REPAIR_HOOK_KEY'}}}]:[];
+const repairVolumes=c.repairHookCA?cm('repair-ca','/etc/repair-ca'):{mounts:[],volumes:[]};
+if(c.repairHookCA){config('repair-ca',{'ca.crt':c.repairHookCA});repairEnv.push({name:'NODE_EXTRA_CA_CERTS',value:'/etc/repair-ca/ca.crt'});}
+workload('mcp-otel',c.image,[['http',8080]],{...repairVolumes,sa:'mcp-otel',memory:'256Mi',env:[{name:'PUBLIC_ORIGIN',value:c.origin},{name:'LOKI_URL',value:'http://loki:3100'},{name:'PROMETHEUS_URL',value:'http://prometheus:9090'},{name:'TEMPO_URL',value:'http://tempo:3200'},{name:'GRAFANA_URL',value:'http://grafana:3000'},...repairEnv,...['DATABASE_URL','ENCRYPTION_KEY','ALERT_INGEST_KEY'].map(key=>({name:key,valueFrom:{secretKeyRef:{name:'mcp-otel',key}}}))],readiness:'/readyz'});
 const ingress=add('Ingress','mcp-otel',{ingressClassName:c.ingressClass??'traefik',rules:[{host:origin.hostname,http:{paths:[{path:'/',pathType:'Prefix',backend:{service:{name:'mcp-otel',port:{number:8080}}}}]}}],tls:[{hosts:[origin.hostname]}]},'networking.k8s.io/v1');
 ingress.metadata.annotations={'traefik.ingress.kubernetes.io/router.entrypoints':'websecure','traefik.ingress.kubernetes.io/router.tls':'true','traefik.ingress.kubernetes.io/router.tls.certresolver':c.certificateResolver??'letsencrypt'};
 add('NetworkPolicy','isolate-ingress',{podSelector:{},policyTypes:['Ingress'],ingress:[{from:[{podSelector:{}}]},{from:[{namespaceSelector:{matchLabels:{'kubernetes.io/metadata.name':'kube-system'}}}],ports:[{port:8080,protocol:'TCP'}]}]},'networking.k8s.io/v1');
@@ -323,6 +334,9 @@ add('NetworkPolicy','instrumented-apps',{podSelector:{matchLabels:{app:'collecto
 // Kubernetes and outbound HTTPS are reachable. Callback address pinning adds
 // application-level SSRF protection, including against public DNS rebinding.
 add('NetworkPolicy','core-egress',{podSelector:{matchLabels:{app:'mcp-otel'}},policyTypes:['Egress'],egress:[{to:[{namespaceSelector:{matchLabels:{'kubernetes.io/metadata.name':'kube-system'}}}],ports:[{port:53,protocol:'UDP'},{port:53,protocol:'TCP'}]},{to:[{podSelector:{}}],ports:[{port:3100,protocol:'TCP'},{port:3200,protocol:'TCP'},{port:9090,protocol:'TCP'},{port:3000,protocol:'TCP'}]},{ports:[{port:443,protocol:'TCP'},{port:5432,protocol:'TCP'}]}]},'networking.k8s.io/v1');
+if(c.repairHookIP){if(!/^\d+\.\d+\.\d+\.\d+$/.test(c.repairHookIP))throw new Error('Repair hook IP must be an IPv4 address');items.find(i=>i.kind==='NetworkPolicy'&&i.metadata.name==='core-egress').spec.egress.push({to:[{ipBlock:{cidr:c.repairHookIP+'/32'}}],ports:[{port:18081,protocol:'TCP'}]});}
+// Some CNIs enforce policy after Service DNAT; k3s' API destination is 6443.
+items.find(i=>i.kind==='NetworkPolicy'&&i.metadata.name==='core-egress').spec.egress.push({...(c.kubernetesAPIIP?{to:[{ipBlock:{cidr:c.kubernetesAPIIP+'/32'}}]}:{}),ports:[{port:6443,protocol:'TCP'}]});
 // JSON string literals are valid YAML scalars and protect OTTL expressions
 // containing colon-space, quotes and regular-expression backslashes.
 const collector=items.find(i=>i.kind==='ConfigMap'&&i.metadata.name==='collector');

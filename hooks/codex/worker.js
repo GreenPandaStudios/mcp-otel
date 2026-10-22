@@ -6,6 +6,7 @@ import { readFile,writeFile,mkdir,rename } from 'node:fs/promises';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import path from 'node:path';
+import https from 'node:https';
 import { equal,hash,canonical,redact } from '../../src/security.js';
 import { versionOf,validateSnapshot } from '../../src/repairs.js';
 const run=promisify(execFile),config=JSON.parse(await readFile(process.env.REPAIR_CONFIG,'utf8'));
@@ -119,4 +120,5 @@ app.post('/deploy',async(req,res)=>{
 });
 app.post('/outcome',async(req,res)=>{const job=await load(req.body.id);res.json(job.result??{status:job.status});});
 app.use((_error,_req,res,_next)=>res.status(400).json({error:'Hook request failed'}));
-app.listen(config.port,config.listen,()=>console.log('MCP-OTel Codex hook listening'));
+const server=config.tlsKey&&config.tlsCert?https.createServer({key:await readFile(config.tlsKey),cert:await readFile(config.tlsCert)},app):app;
+server.listen(config.port,config.listen,()=>console.log('MCP-OTel Codex hook listening'));

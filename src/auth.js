@@ -30,7 +30,7 @@ export function challenge(origin) {
 }
 function noCache(res) { res.set('Cache-Control','no-store'); }
 export function requireScope(identity, scope) {
-  if (!identity?.scopes.includes(scope)) throw Object.assign(new Error('Insufficient scope'), { code: -32001 });
+  if (!identity?.scopes.includes(scope)) throw Object.assign(new Error('Insufficient scope'), { code: -32001, authScope:scope });
 }
 export function requireNamespace(identity, namespace) {
   if (!identity || (!identity.namespaces.includes('*') && !identity.namespaces.includes(namespace))) throw Object.assign(new Error('Namespace not authorized'), { code: -32001 });
