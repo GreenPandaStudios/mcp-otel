@@ -1,0 +1,10 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
+  "mcpServers": {
+    "mcp-otel": {
+      "type": "streamable-http",
+      "url": "https://otel.august.services/mcp",
+      "extensions": {"com.openai": {"auth": {"type": "oauth", "client": {"mode": "provided", "clientId": "REPLACE_WITH_INSTALLATION_CLIENT_ID", "tokenEndpointAuthMethod": "client_secret_basic"}, "baseScopes": ["telemetry:read", "events:subscribe", "repairs:read", "repairs:prepare"]}}}
+    }
+  }
+}

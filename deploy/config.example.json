@@ -1,0 +1,9 @@
+{
+  "namespace": "mcp-otel",
+  "origin": "https://otel.example.com",
+  "image": "ghcr.io/your-org/mcp-otel:0.1.0",
+  "privateNamespaces": ["private-app"],
+  "storageClass": "local-path",
+  "ingressClass": "traefik",
+  "certificateResolver": "letsencrypt"
+}

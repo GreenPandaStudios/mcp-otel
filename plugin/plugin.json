@@ -1,0 +1,11 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "mcp-otel",
+  "version": "0.1.0",
+  "description": "Query Kubernetes observability, subscribe to incident events with log evidence, and review tested repairs.",
+  "author": {"name": "MCP-OTel contributors"},
+  "repository": "https://github.com/GreenPandaStudios/mcp-otel",
+  "license": "Apache-2.0",
+  "keywords": ["observability", "kubernetes", "opentelemetry", "mcp"],
+  "extensions": {"com.openai": {"interface": {"displayName": "MCP-OTel", "shortDescription": "Cluster telemetry and incident events", "category": "Developer Tools", "capabilities": ["Read", "Write"]}}}
+}
