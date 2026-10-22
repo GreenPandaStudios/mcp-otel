@@ -96,19 +96,20 @@ export class Events {
         for(const j of rows)await tx.query(`UPDATE deliveries SET lease_until=now()+interval '30 seconds' WHERE subscription_id=$1 AND event_seq=$2`,[j.subscription_id,j.event_seq]);
         return rows;
       });
-      for(const j of jobs){
+      const results=await Promise.allSettled(jobs.map(async j=>{
         const {rows}=await this.store.query(`SELECT s.*,e.id AS event_id,e.name AS event_name,e.payload,e.occurred_at,d.attempts FROM deliveries d
           JOIN subscriptions s ON s.id=d.subscription_id JOIN events e ON e.seq=d.event_seq JOIN principals p ON p.id=s.principal_id
           JOIN grants g ON g.id=s.grant_id JOIN oauth_clients c ON c.id=g.client_id
           WHERE d.subscription_id=$1 AND d.event_seq=$2 AND d.status='pending' AND s.active AND s.expires_at>now() AND p.active AND g.active AND c.active AND 'events:subscribe'=ANY(g.scopes) AND 'events:subscribe'=ANY(p.scopes) AND ('*'=ANY(p.namespaces) OR s.arguments->>'namespace'=ANY(p.namespaces))`,[j.subscription_id,j.event_seq]);
-        if(!rows[0])continue;
+        if(!rows[0])return;
         const s=rows[0];let status=0;
         try{status=(await this.send(s,{eventId:s.event_id,name:s.event_name,timestamp:new Date(s.occurred_at).toISOString(),data:s.payload,cursor:null})).status;}catch{}
         const success=status>=200&&status<300, permanent=[400,401,403,404,410,413].includes(status), exhausted=s.attempts+1>=12;
         const delay=Math.min(3600000,1000*2**Math.min(s.attempts,12))+Math.floor(Math.random()*1000);
-        await this.store.query(`UPDATE deliveries SET status=$3,attempts=attempts+1,last_status=$4,lease_until=NULL,next_attempt=now()+$5*interval '1 millisecond' WHERE subscription_id=$1 AND event_seq=$2`,[j.subscription_id,j.event_seq,success?'delivered':permanent||exhausted?'failed':'pending',status,delay]);
+        await this.store.query(`UPDATE deliveries SET status=$3,attempts=attempts+1,last_status=$4,lease_until=NULL,next_attempt=now()+$5*interval '1 millisecond' WHERE subscription_id=$1 AND event_seq=$2 AND status='pending'`,[j.subscription_id,j.event_seq,success?'delivered':permanent||exhausted?'failed':'pending',status,delay]);
         if(status===410)await this.store.query('UPDATE subscriptions SET active=false WHERE id=$1',[s.id]);
-      }
+      }));
+      if(results.some(r=>r.status==='rejected'))throw new Error('Delivery persistence failed');
     }finally{this.running=false;}
   }
 }

@@ -69,11 +69,23 @@ test('Postgres-backed OAuth, durable event and approval lifecycle',{skip:!proces
     assert.equal(a.id,b.id);assert.equal(a.cursor,null);assert.ok(a.refreshBefore);
     const rows=(await store.query('SELECT * FROM subscriptions')).rows;assert.equal(rows.length,1);assert.ok(!rows[0].encrypted_secret.includes(secret));
   });
+  await t.test('refresh rotates signing keys with overlap and callback failure never activates a subscription',async()=>{
+    const identity={id:'owner',grant_id:grantId,scopes:SCOPES,namespaces:['synthetic']};
+    const nextSecret='whsec_'+randomBytes(32).toString('base64');
+    const rotating=new Events(store,config,crypto,async(_url,body,headers)=>{assert.ok(verifySignature(nextSecret,headers,body));return {status:200,body:JSON.stringify({challenge:JSON.parse(body).challenge})};});
+    const refreshed=await rotating.subscribe(identity,{...subscription,delivery:{...subscription.delivery,secret:nextSecret},ttlMs:null});
+    assert.ok(refreshed.refreshBefore,'Non-expiring request receives a finite grant');
+    const saved=(await store.query('SELECT * FROM subscriptions WHERE id=$1',[refreshed.id])).rows[0];assert.equal(crypto.open(saved.encrypted_secret),nextSecret);assert.equal(crypto.open(saved.old_secret),secret);
+    const invalid=new Events(store,config,crypto,async()=>({status:200,body:'{"challenge":"wrong"}'}));
+    await assert.rejects(invalid.subscribe(identity,{...subscription,delivery:{...subscription.delivery,url:'https://callback.example/invalid'}}),e=>e.code===-32015&&e.data.reason==='challenge_failed');
+    assert.equal((await store.query('SELECT count(*)::int AS n FROM subscriptions')).rows[0].n,1);
+  });
   let incidentId;
   await t.test('incident includes stdout/stderr excerpts; failed delivery survives restart with stable ID',async()=>{
     incidentId=await incidents.record({source:'synthetic',namespace:'synthetic',service:'demo',status:'open',severity:'warning',summary:'Synthetic incident',fingerprint:'fixture'});
     failNext=true;await events.drain();assert.equal(received.length,1);
     assert.equal(received[0].data.data.logs[0].stream,'stderr');assert.ok(!received[0].body.includes('secret-value'));
+    assert.equal(received[0].headers['webhook-signature'].split(' ').length,2,'Rotation signs with old and new keys');
     events=new Events(store,config,crypto,sender);
     await store.query(`UPDATE deliveries SET next_attempt=now()`);await events.drain();
     assert.equal(received.length,2);assert.equal(received[0].data.eventId,received[1].data.eventId);

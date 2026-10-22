@@ -74,7 +74,7 @@ export async function publicPost(url, body, headers = {}, hosts = [], resolve = 
   const u = callbackURL(url, hosts);
   const addresses = await resolve(u.hostname, { all: true, verbatim: true });
   if (!addresses.length || addresses.some(a => !isPublicIP(a.address))) throw new Error('Callback resolves to non-public address');
-  const chosen = addresses[0];
+  const chosen = addresses.find(a=>a.family===4)??addresses[0];
   return new Promise((resolve, reject) => {
     const req = https.request(u, {
       method: 'POST', agent: false, timeout: 10000, maxHeaderSize: 16384,
