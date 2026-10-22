@@ -26,7 +26,10 @@ function complete(value){return {resultType:'complete',...value};}
 export function createApp({store,config,telemetry,events,repairs,incidents}){
   const app=express();app.disable('x-powered-by');app.set('trust proxy',false);
   app.use((req,res,next)=>{
-    res.set({'X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','Content-Security-Policy':"default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'"});
+    // no-referrer makes browsers send Origin: null for form POSTs, which
+    // correctly fail the origin checks on OAuth consent and repair approval.
+    // same-origin preserves that proof without leaking URLs to other origins.
+    res.set({'X-Content-Type-Options':'nosniff','Referrer-Policy':'same-origin','Content-Security-Policy':"default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'"});
     next();
   });
   // Per-process burst control supplements ingress limits; credentials, IPs and

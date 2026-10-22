@@ -65,7 +65,7 @@ export function authRoutes(app, store, config) {
     res.cookie(cookieName,sid,{httpOnly:true,secure:true,sameSite:'lax',path:'/',maxAge:30*86400000});
     const fields = Object.entries({...q, csrf}).filter(([k]) => ['client_id','redirect_uri','response_type','resource','code_challenge','code_challenge_method','scope','state','csrf'].includes(k))
       .map(([k,v])=>`<input type="hidden" name="${escapeHtml(k)}" value="${escapeHtml(v)}">`).join('');
-    res.type('html').send(page('Connect MCP-OTel', `<p>Authorize your private ChatGPT connection to read cluster telemetry, subscribe to events, and prepare repairs.</p><p>Rollouts require separate approval of the exact tested change.</p><form method="post">${fields}<button>Connect this installation</button></form>`));
+    res.type('html').send(page('Connect MCP-OTel', `<p>Connect your MCP client to this private installation.</p><p>Requested access: <code>${escapeHtml(q.scope)}</code>.</p><p>Rollouts require separate approval of the exact tested change.</p><form method="post">${fields}<button>Connect this installation</button></form>`));
   });
   app.post('/oauth/authorize', async (req,res) => {
     noCache(res);

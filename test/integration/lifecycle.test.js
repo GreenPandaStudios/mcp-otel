@@ -49,7 +49,10 @@ test('Postgres-backed OAuth, durable event and approval lifecycle',{skip:!proces
   });
   await t.test('PKCE, exact resource, confidential connection and browser proof are required',async()=>{
     const r=await fetch(base+'/oauth/authorize?'+new URLSearchParams(params));cookie=r.headers.getSetCookie()[0].split(';')[0];
+    assert.equal(r.headers.get('referrer-policy'),'same-origin','Browser form POSTs must preserve the same-origin Origin header');
     const csrf=(await r.text()).match(/name="csrf" value="([^"]+)"/)[1];
+    const opaqueOrigin=await fetch(base+'/oauth/authorize',{method:'POST',redirect:'manual',headers:{'content-type':'application/x-www-form-urlencoded',cookie,origin:'null'},body:new URLSearchParams({...params,csrf})});
+    assert.equal(opaqueOrigin.status,403,'Opaque origins remain unauthorized');
     const consent=await fetch(base+'/oauth/authorize',{method:'POST',redirect:'manual',headers:{'content-type':'application/x-www-form-urlencoded',cookie,origin:config.origin},body:new URLSearchParams({...params,csrf})});
     const callback=new URL(consent.headers.get('location'));assert.equal(callback.searchParams.get('iss'),config.origin);assert.equal(callback.searchParams.get('state'),'outer-state');
     const code=callback.searchParams.get('code'),body={grant_type:'authorization_code',code,redirect_uri:params.redirect_uri,code_verifier:verifier,resource:config.origin};
